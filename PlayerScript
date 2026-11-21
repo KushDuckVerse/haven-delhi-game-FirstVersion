@@ -1,0 +1,58 @@
+extends CharacterBody3D #FOR 3D PLAYER
+
+@export var move_speed: float = 4.2
+@export var sprint_speed: float = 6.2
+@export var gravity: float = 18.0
+@export var mouse_sensitivity: float = 0.0022
+@export var step_climb_speed: float = 12.0
+
+@onready var head: Node3D = $Head
+@onready var camera: Camera3D = $Head/Camera3D
+@onready var flashlight: SpotLight3D = $Head/Flashlight
+
+var flashlight_on: bool = true
+
+func _ready() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	floor_snap_length = 0.25
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		rotate_y(-event.relative.x * mouse_sensitivity)
+		head.rotate_x(-event.relative.y * mouse_sensitivity)
+		head.rotation.x = clamp(head.rotation.x, deg_to_rad(-80.0), deg_to_rad(80.0))
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
+		flashlight_on = not flashlight_on
+		flashlight.visible = flashlight_on
+
+func _physics_process(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+
+	var input_dir := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
+
+	var current_speed := sprint_speed if Input.is_key_pressed(KEY_SHIFT) else move_speed
+
+	if direction:
+		velocity.x = direction.x * current_speed
+		velocity.z = direction.z * current_speed
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, current_speed * 10.0 * delta)
+		velocity.z = move_toward(velocity.z, 0.0, current_speed * 10.0 * delta)
+
+	# When moving on the floor and hitting a low step riser, gently lift upward so you climb stairs smoothly
+	if is_on_floor() and is_on_wall() and direction.length() > 0.1:
+		var wall_normal := get_wall_normal()
+		# Only climb low risers (nearly horizontal normal), not steep walls
+		if abs(wall_normal.y) < 0.35:
+			global_position.y += step_climb_speed * delta * 0.25
+
+	move_and_slide()
